@@ -207,7 +207,9 @@ bot.callbackQuery("ban", async (ctx) => {
 
     const id = Number(ctx.callbackQuery.message!.text!.split("\n").slice(-1)[0]);
 
-    if (config.banList.includes(id)) {
+    if (ctx.callbackQuery.from.id === id) {
+      await ctx.answerCallbackQuery({text: "Вы не можете себя заблокировать!"});
+    } else if (config.banList.includes(id)) {
       await ctx.answerCallbackQuery({text: "Пользователь уже заблокирован!"});
     }
     else {

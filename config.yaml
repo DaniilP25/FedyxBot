@@ -8,7 +8,9 @@ timeoutMessage: Писать можно раз в 3 секунды! Подожд
 successEmoji: 👌
 banList:
   - null
+  - null
 trustedUsers:
   - 1347012166
   - 5376829237
   - 1345091383
+premium: false
