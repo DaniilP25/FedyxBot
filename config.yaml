@@ -6,6 +6,7 @@ helloMessage: >-
 bannedMessage: Вы заблокированы и не можете писать в предложку.
 successEmoji: 👌
 banList:
+  - null
 trustedUsers:
   - 1347012166
   - 5376829237

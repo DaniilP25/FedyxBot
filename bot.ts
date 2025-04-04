@@ -85,12 +85,14 @@ bot.on('message', async (ctx) => {
         const media: any[] = [];
 
         // Обрабатываем фото
+        
         if (message.photo && Array.isArray(message.photo)) {
-            message.photo.forEach(photo => {
-              media.push(InputMediaBuilder.photo(photo.file_id));
-            });
+          const firstPhoto = message.photo[0]; // Берем элемент с индексом 0
+          if (firstPhoto) {
+              media.push(InputMediaBuilder.photo(firstPhoto.file_id));
+          }
         }
-
+        
         // Обрабатываем видео
         if (message.video) {media.push(InputMediaBuilder.video(message.video.file_id))}
 
@@ -123,20 +125,20 @@ bot.on('message', async (ctx) => {
 
         if (media.length > 0) {
 
-          await ctx.api.sendMediaGroup(config.targetGroupId, media);
+          await ctx.api.sendMediaGroup(config.targetGroupId, media); // отправка вложений
 
           if (message.caption) {
 
-            await bot.api.sendMessage(config.targetGroupId,
+            await bot.api.sendMessage(config.targetGroupId,          // отправка текста
 `<b>Новое сообщение:</b> <code>${message.caption}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
-<tg-spoiler>${ctx.from.id}</tg-spoiler>`,
+<tg-spoiler>${ctx.from.id}</tg-spoiler>`, 
             {parse_mode: "HTML", reply_markup: msgButtons})
 
           }
           else {
 
-            await bot.api.sendMessage(config.targetGroupId,
+            await bot.api.sendMessage(config.targetGroupId,          // отправка текста
 `<b>Новое сообщение! Вложения выше</b>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
@@ -145,17 +147,17 @@ bot.on('message', async (ctx) => {
 
         } else {
 
-          await bot.api.sendMessage(config.targetGroupId,
+          await bot.api.sendMessage(config.targetGroupId,            // отправка текста
 `<b>Новое сообщение:</b> <code>${message.text}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
           {parse_mode: "HTML", reply_markup: msgButtons})
         }
 
-        await ctx.react(config.successEmoji);
+        await ctx.react(config.successEmoji);                        // реакция
 
 
-  } else if (chatType === 'group' || chatType === 'supergroup') {
+  } else if (chatType === 'group' || chatType === 'supergroup') {    // отправка сообщений от группы в личку, выход из лишних групп
 
         if (ctx.chat.id == config.targetGroupId) {
 
