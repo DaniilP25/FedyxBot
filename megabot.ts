@@ -12,6 +12,6 @@ bot.command("start", async (ctx) => {
                     {reply_markup: startMenu, parse_mode: "HTML"}); // start message
 });
 
-// здесь должен быть постгрескл
+// здесь должен быть постгрес
 
 bot.start();
