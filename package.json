@@ -1,0 +1,27 @@
+{
+  "name": "tgts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@grammyjs/types": "^3.19.0",
+    "@importable/yaml": "^0.1.1",
+    "grammy": "^1.35.1",
+    "importable": "^0.1.0",
+    "js-yaml": "^4.1.0",
+    "mongodb": "^6.15.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/mongodb": "^4.0.6",
+    "@types/node": "^22.14.0",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2"
+  }
+}
