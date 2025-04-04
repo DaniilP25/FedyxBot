@@ -10,10 +10,11 @@
 // });
 
 import { Bot, InlineKeyboard, InputMediaBuilder } from "grammy";
-import { InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio } from '@grammyjs/types';
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
+
+var timeout_users: number[] = [];
 
 const fileContents = fs.readFileSync('./config.yaml', 'utf8');
 const config = yaml.load(fileContents) as {[key: string]: any};
@@ -22,6 +23,10 @@ const bot = new Bot(config.token);
 function sync_yaml(config: {[key: string]: any}) {
   const yamlString = yaml.dump(config);
   fs.writeFileSync('config.yaml', yamlString);
+}
+
+function removeTimeout(id: number): void {
+  delete timeout_users[timeout_users.indexOf(id)];
 }
 
 const msgButtons = new InlineKeyboard()                    // кнопки бан разбан удалить
@@ -81,18 +86,23 @@ bot.on('message', async (ctx) => {
           return;
         }
 
+        if (timeout_users.includes(ctx.from.id)) { // проверка на обоюнду
+          ctx.reply(config.timeoutMessage);
+          return;
+        }
+
         const message = ctx.message;
         const media: any[] = [];
 
         // Обрабатываем фото
-        
+
         if (message.photo && Array.isArray(message.photo)) {
           const firstPhoto = message.photo[0]; // Берем элемент с индексом 0
           if (firstPhoto) {
               media.push(InputMediaBuilder.photo(firstPhoto.file_id));
           }
         }
-        
+
         // Обрабатываем видео
         if (message.video) {media.push(InputMediaBuilder.video(message.video.file_id))}
 
@@ -154,8 +164,9 @@ bot.on('message', async (ctx) => {
           {parse_mode: "HTML", reply_markup: msgButtons})
         }
 
+        timeout_users.push(ctx.from.id);
+        setInterval(() => removeTimeout(ctx.from.id), 3000);
         await ctx.react(config.successEmoji);                        // реакция
-
 
   } else if (chatType === 'group' || chatType === 'supergroup') {    // отправка сообщений от группы в личку, выход из лишних групп
 
