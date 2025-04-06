@@ -1,24 +1,22 @@
-import { Pool } from 'pg';
+import { Client, QueryResultRow } from 'pg';
 
-const pool = new Pool({
-  user: 'your_username',
-  host: 'your_host',
-  database: 'your_database',
-  password: 'postgresXOLOKOCT',
-  port: 8841,
-});
-
-async function main() {
+export async function db_query<T extends QueryResultRow = any>(
+ query: string,
+ values?: any[]
+):Promise<T[]> {
   try {
-    const res = await pool.query('SELECT * FROM your_table');
-    console.log(res.rows);
+    const client = new Client({
+      user: 'postgres',
+      host: 'localhost',
+      database: 'postgres',
+      password: 'postgresXOLOKOCT',
+      port: 5432,
+    });  
+    await client.connect();
+    const result = await client.query<T>(query, values || []);
+    return result.rows;  
   } catch (err) {
-    console.error(err);
-  } finally {
-    // Вызов pool.end() только при завершении приложения
-    await pool.end();
-    process.exit(0);
+    console.error('Query error:', err);
+    throw err; // Пробрасываем ошибку для обработки в вызывающем коде
   }
 }
-
-main();

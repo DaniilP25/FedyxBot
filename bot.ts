@@ -1,20 +1,17 @@
-// import { saveData, loadData } from './data';
-
-// const dynamicData = {
-//   name: 'John',
-//   age: 30,
-// };
-
-// saveData(dynamicData).then(() => {
-//   loadData().then((data) => console.log(data));
-// });
-
 import { Bot, InlineKeyboard, InputMediaBuilder } from "grammy";
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
-var timeout_users: number[] = [];
+// ТУТ НУЖНО: ПЕРЕПИСАТЬ ДАННЫЕ ИЗ CONFIG.YAML В БД
+// понял принял, не против если меня будет консультировать кириеш?
+// я только за, чтобы он был с нами, но надо будет ему все объяснить, что и где, и зачем
+// по крайней мере надо пофиксить здесь фигню, чтобы бот не спамил ошибками и работал корректно,
+// а основная задача после этой - в мегаботе реализовать все
+
+// я отойду дела сделаю
+
+let timeout_users: number[] = [];
 
 const fileContents = fs.readFileSync('./config.yaml', 'utf8');
 const config = yaml.load(fileContents) as {[key: string]: any};
@@ -34,47 +31,11 @@ const msgButtons = new InlineKeyboard()                    // кнопки ба�
   .text("✅", "unban")
   .text("🗑️", "delete");
 
-// bot.on("message", async (ctx) => {
-//     await ctx.reply(ctx.message.text!);
-// });
+
 
 bot.command("start", async (ctx) => {                      // /start
     await ctx.reply(config.helloMessage);
 });
-
-// хуйня с оплатой
-// bot.command("buy", async (ctx) => {
-//   try {
-//       const invoiceLink = await bot.api.createInvoiceLink(
-//           "деф",
-//           "приобрести дефа без регистрации и налогов",
-//           "{}",
-//           "1744374395:TEST:781426a4c1472b6b1ee6", // Токен платежного провайдера
-//           "RUB",
-//           [{amount: 10000, label: "деф"}]
-//       );
-//       await ctx.reply(`${invoiceLink}`);
-//   } catch (error) {
-//       console.error("Ошибка генерации инвойса:", error);
-//   }
-// });
-
-// bot.on("pre_checkout_query", async (ctx) => {
-//   try {
-//       await ctx.answerPreCheckoutQuery(true); // Подтверждение оплаты
-//   } catch (error) {
-//       console.error("Ошибка обработки pre_checkout_query:", error);
-//   }
-// });
-
-// bot.on("message:successful_payment", async (ctx) => {
-//   try {
-//       await ctx.reply("Оплата успешно завершена!");
-//   } catch (error) {
-//       console.error("Ошибка обработки успешной оплаты:", error);
-//   }
-// });
-
 
 bot.on('message', async (ctx) => {
     const chatType = ctx.chat.type;
@@ -133,6 +94,14 @@ bot.on('message', async (ctx) => {
 
         }
 
+        if (message.sticker) {
+          // Стикеры передаем как документы
+          media.push(InputMediaBuilder.document(message.sticker.file_id));
+          
+          // Альтернативно можно использовать метод для стикеров
+          // media.push(InputMediaBuilder.sticker(message.sticker.file_id));
+        }
+
         if (media.length > 0) {
 
           await ctx.api.sendMediaGroup(config.targetGroupId, media); // отправка вложений
@@ -142,7 +111,7 @@ bot.on('message', async (ctx) => {
             await bot.api.sendMessage(config.targetGroupId,          // отправка текста
 `<b>Новое сообщение:</b> <code>${message.caption}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
-<tg-spoiler>${ctx.from.id}</tg-spoiler>`, 
+<tg-spoiler>${ctx.from.id}</tg-spoiler>`,
             {parse_mode: "HTML", reply_markup: msgButtons})
 
           }
@@ -171,19 +140,24 @@ bot.on('message', async (ctx) => {
   } else if (chatType === 'group' || chatType === 'supergroup') {    // отправка сообщений от группы в личку, выход из лишних групп
 
         if (ctx.chat.id == config.targetGroupId) {
+           try {
+              if (ctx.msg.reply_to_message == undefined) {
+                return;
+              }
 
-            try {
-
+              if (ctx.msg.reply_to_message!.from!.id == bot.botInfo.id) {
                 const id = ctx.msg.reply_to_message!.text!.split("\n").slice(-1)[0];
-                const message = ctx.message.text!;
+                const message = ctx.message.text!; // проверено
                 await bot.api.sendMessage(id,
 `<b>${message}</b>\n
 👤 ${ctx.from.first_name}`,
-                {parse_mode: "HTML"});
+                  {parse_mode: "HTML"});
+                }
+             }
+            
+            catch (err) {
+              await bot.api.sendMessage(config.targetGroupId, `<b>Ошибка:</b> <code>Отвечайте на "новое сообщение" при ответе пользователю!</code>`, {parse_mode: "HTML"});}
 
-            }
-
-            catch (err) {await bot.api.sendMessage(config.targetGroupId, `<b>Ошибка:</b> <code>${String(err)}</code>`, {parse_mode: "HTML"});}
         }
 
         else {
@@ -196,9 +170,7 @@ bot.on('message', async (ctx) => {
             catch (error) {console.error(`Ошибка при выходе из группы ${ctx.chat.id}:`, error);}
 
         }
-
-    }
-
+      }
 });
 
 bot.callbackQuery("ban", async (ctx) => {

@@ -9,8 +9,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@grammyjs/conversations": "^2.0.1",
     "@grammyjs/types": "^3.19.0",
     "@importable/yaml": "^0.1.1",
+    "dotenv": "^16.4.7",
     "grammy": "^1.35.1",
     "importable": "^0.1.0",
     "js-yaml": "^4.1.0",
