@@ -7,6 +7,7 @@ import {
 } from "@grammyjs/conversations";
 import { Client, QueryResult, QueryResultRow } from "pg";
 import { db_query } from "./db";
+import { runBot } from "./bot";
 
 // Типизация
 interface SessionData {}
@@ -26,6 +27,23 @@ const startMenu = new InlineKeyboard()
   .text("🆘 Поддержка", "support")
   .text("💸 Подписка", "sub")
   .text("➕ Новый бот", "newbot");
+
+// Потужий запуск бота
+(async () => {
+  const tokens_row = await db_query('SELECT token FROM apps;');
+  let token, isValid;
+
+  for (let i = 0; i < tokens_row.length; i++) {
+    try {
+      token = tokens_row[i]['token'];
+      isValid = await validateToken(token);
+      if (isValid) {
+        runBot(token);      
+      }  
+    }
+    catch {}
+  }
+})();
 
 // Обработка /start
 bot.command("start", async (ctx) => {
@@ -86,7 +104,7 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
   );
 
   const { message } = await conversation.waitFor("message:text");
-  const token = message.text;
+  const token = message.text.trim();
   const authorID = ctx.from?.id;
 
   if (!authorID) {
@@ -94,42 +112,48 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
     return;
   }
 
+  let isValid = false;
   try {
-    if (await validateToken(token)) {
-      await conversation.external(() =>
-        db_query(
-          `INSERT INTO apps(token, authorID, helloMessage, timeoutMessage, banMessage, unbanMessage, sendMessage, targetGroupID)
-           VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [token, authorID, '', '', '', '', '', 0]
-        )
-      );  
-      await ctx.reply("✅ Бот успешно создан!");
-    }
-    else {
-      await ctx.reply("❌ Ошибка при создании бота. Введите корректный токен или попробуйте позже.");
-    }
+    isValid = await validateToken(token);
   } catch (error) {
-    console.error("Ошибка при создании бота:", error);
-    await ctx.reply("❌ Ошибка при создании бота. Введите корректный токен или попробуйте позже.");
+    console.error("Ошибка в validateToken:", error);
+    await ctx.reply("❌ Произошла ошибка при проверке токена. Попробуйте снова.");
+    return;
+  }
+
+  if (!isValid) {
+    await ctx.reply("❌ Токен недействителен. Пожалуйста, введите корректный токен от @BotFather.");
+    return;
+  }
+
+  try {
+    await conversation.external(() =>
+      db_query(
+        `INSERT INTO apps(token, authorID, helloMessage, timeoutMessage, banMessage, unbanMessage, sendMessage, targetGroupID)
+         VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [token, authorID, '', '', '', '', '', 0]
+      )
+    );
+    await ctx.reply("✅ Бот успешно создан!");
+    runBot(token);
+  } catch (error) {
+    console.error("Ошибка при добавлении в базу данных:", error);
+    await ctx.reply("❌ Токен недействителен. Пожалуйста, введите корректный токен от @BotFather.");
   }
 
   return token;
 }
 
-async function validateToken(token: string) {
+// Функция для проверки токена
+async function validateToken(token: string): Promise<boolean> {
   try {
-    const validateBot = new Bot(token);
-    validateBot.start();
-    validateBot.stop();
-    return true;  
-  }
-  catch {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const data = await res.json();
+    return data.ok === true;
+  } catch (err) {
+    console.error("Ошибка в запросе к Telegram API:", err);
     return false;
   }
-}
-
-async function runBot(token: string) {
-
 }
 
 bot.start();

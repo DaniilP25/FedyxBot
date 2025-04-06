@@ -4,36 +4,29 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 // ТУТ НУЖНО: ПЕРЕПИСАТЬ ДАННЫЕ ИЗ CONFIG.YAML В БД
-// понял принял, не против если меня будет консультировать кириеш?
-// я только за, чтобы он был с нами, но надо будет ему все объяснить, что и где, и зачем
-// по крайней мере надо пофиксить здесь фигню, чтобы бот не спамил ошибками и работал корректно,
-// а основная задача после этой - в мегаботе реализовать все
 
-// я отойду дела сделаю
+export async function runBot(token: string) {
+  let timeout_users: number[] = [];
 
-let timeout_users: number[] = [];
+  const fileContents = fs.readFileSync('./config.yaml', 'utf8');
+  const config = yaml.load(fileContents) as {[key: string]: any};
+  
+  function sync_yaml(config: {[key: string]: any}) {
+    const yamlString = yaml.dump(config);
+    fs.writeFileSync('config.yaml', yamlString);
+  }
+  
+  function removeTimeout(id: number): void {
+    delete timeout_users[timeout_users.indexOf(id)];
+  }
+  
+  const msgButtons = new InlineKeyboard()                    // кнопки бан разбан удалить
+    .text("⛔", "ban")
+    .text("✅", "unban")
+    .text("🗑️", "delete");
 
-const fileContents = fs.readFileSync('./config.yaml', 'utf8');
-const config = yaml.load(fileContents) as {[key: string]: any};
-const bot = new Bot(config.token);
-
-function sync_yaml(config: {[key: string]: any}) {
-  const yamlString = yaml.dump(config);
-  fs.writeFileSync('config.yaml', yamlString);
-}
-
-function removeTimeout(id: number): void {
-  delete timeout_users[timeout_users.indexOf(id)];
-}
-
-const msgButtons = new InlineKeyboard()                    // кнопки бан разбан удалить
-  .text("⛔", "ban")
-  .text("✅", "unban")
-  .text("🗑️", "delete");
-
-
-
-bot.command("start", async (ctx) => {                      // /start
+  const bot = new Bot(token);
+  bot.command("start", async (ctx) => {                      // /start
     await ctx.reply(config.helloMessage);
 });
 
@@ -229,5 +222,5 @@ bot.callbackQuery("delete", async (ctx) => {
   else {await ctx.answerCallbackQuery({text: "Вы не можете управлять ботом"});}
 
 });
-
-bot.start();
+  bot.start();
+}
