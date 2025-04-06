@@ -134,7 +134,7 @@ bot.on('message', async (ctx) => {
         }
 
         timeout_users.push(ctx.from.id);
-        setInterval(() => removeTimeout(ctx.from.id), 3000);
+        setInterval(() => removeTimeout(ctx.from.id), 20000);
         await ctx.react(config.successEmoji);                        // реакция
 
   } else if (chatType === 'group' || chatType === 'supergroup') {    // отправка сообщений от группы в личку, выход из лишних групп

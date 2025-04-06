@@ -95,21 +95,41 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
   }
 
   try {
-    await conversation.external(() =>
-      db_query(
-        `INSERT INTO apps(token, authorID, helloMessage, timeoutMessage, banMessage, unbanMessage, sendMessage, targetGroupID)
-         VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [token, authorID, '', '', '', '', '', 0]
-      )
-    );
-    await ctx.reply("✅ Бот успешно создан! ");
+    if (await validateToken(token)) {
+      await conversation.external(() =>
+        db_query(
+          `INSERT INTO apps(token, authorID, helloMessage, timeoutMessage, banMessage, unbanMessage, sendMessage, targetGroupID)
+           VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [token, authorID, '', '', '', '', '', 0]
+        )
+      );  
+      await ctx.reply("✅ Бот успешно создан!");
+    }
+    else {
+      await ctx.reply("❌ Ошибка при создании бота. Введите корректный токен или попробуйте позже.");
+    }
   } catch (error) {
     console.error("Ошибка при создании бота:", error);
-    await ctx.reply("❌ Ошибка при создании бота. Попробуйте позже.");
+    await ctx.reply("❌ Ошибка при создании бота. Введите корректный токен или попробуйте позже.");
   }
 
   return token;
 }
 
-// Запуск
+async function validateToken(token: string) {
+  try {
+    const validateBot = new Bot(token);
+    validateBot.start();
+    validateBot.stop();
+    return true;  
+  }
+  catch {
+    return false;
+  }
+}
+
+async function runBot(token: string) {
+
+}
+
 bot.start();
