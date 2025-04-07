@@ -105,7 +105,7 @@ bot.on('message', async (ctx) => {
 `<b>Новое сообщение:</b> <code>${message.caption}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
-            {parse_mode: "HTML", reply_markup: msgButtons})
+            {parse_mode: "HTML", reply_markup: msgButtons});
 
           }
           else {
@@ -114,20 +114,22 @@ bot.on('message', async (ctx) => {
 `<b>Новое сообщение! Вложения выше</b>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
-            {parse_mode: "HTML", reply_markup: msgButtons})
+            {parse_mode: "HTML", reply_markup: msgButtons});
           }
 
         } else {
-
-          await bot.api.sendMessage(config.targetGroupId,            // отправка текста
+          if (message.text !== undefined) {
+            await bot.api.sendMessage(config.targetGroupId,            // отправка текста
 `<b>Новое сообщение:</b> <code>${message.text}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
-          {parse_mode: "HTML", reply_markup: msgButtons})
+                        {parse_mode: "HTML", reply_markup: msgButtons});              
+          }
+
         }
 
         timeout_users.push(ctx.from.id);
-        setInterval(() => removeTimeout(ctx.from.id), 20000);
+        setInterval(() => removeTimeout(ctx.from.id), 10000);
         await ctx.react(config.successEmoji);                        // реакция
 
   } else if (chatType === 'group' || chatType === 'supergroup') {    // отправка сообщений от группы в личку, выход из лишних групп
@@ -138,17 +140,97 @@ bot.on('message', async (ctx) => {
                 return;
               }
 
+              const message = ctx.message;
+              const media: any[] = [];
+      
+              // Обрабатываем фото
+      
+              if (message.photo && Array.isArray(message.photo)) {
+                const firstPhoto = message.photo[0]; // Берем элемент с индексом 0
+                if (firstPhoto) {
+                    media.push(InputMediaBuilder.photo(firstPhoto.file_id));
+                }
+              }
+      
+              // Обрабатываем видео
+              if (message.video) {media.push(InputMediaBuilder.video(message.video.file_id))}
+      
+              if (message.video && Array.isArray(message.video)) {
+                  message.video.forEach(video => {
+                      media.push(InputMediaBuilder.video(video.file_id));
+                  });
+              }
+      
+              // Обрабатываем аудио
+              if (message.audio) {media.push(InputMediaBuilder.audio(message.audio.file_id))}
+      
+              if (message.audio && Array.isArray(message.audio)) {
+      
+                  message.audio.forEach(audio => {
+                    media.push(InputMediaBuilder.audio(audio.file_id));
+                  });
+              }
+      
+              // Обрабатываем документы
+              if (message.document) {media.push(InputMediaBuilder.document(message.document.file_id))}
+      
+              if (message.document && Array.isArray(message.document)) {
+      
+                  message.document.forEach(document => {
+                    media.push(InputMediaBuilder.document(document.file_id));
+                  });
+      
+              }
+      
+              if (message.sticker) {
+                // Стикеры передаем как документы
+                media.push(InputMediaBuilder.document(message.sticker.file_id));
+                
+                // Альтернативно можно использовать метод для стикеров
+                // media.push(InputMediaBuilder.sticker(message.sticker.file_id));
+              }
+      
+              timeout_users.push(ctx.from.id);
+              setInterval(() => removeTimeout(ctx.from.id), 10000);
+
               if (ctx.msg.reply_to_message!.from!.id == bot.botInfo.id) {
                 const id = ctx.msg.reply_to_message!.text!.split("\n").slice(-1)[0];
-                const message = ctx.message.text!; // проверено
-                await bot.api.sendMessage(id,
-`<b>${message}</b>\n
+                const message = ctx.message; // проверено
+                if (media.length > 0) {
+      
+                  await ctx.api.sendMediaGroup(id, media); // отправка вложений
+        
+                  if (message.caption) {
+        
+                    await bot.api.sendMessage(id,          // отправка текста
+`<code>${message.caption}</code>
+👤 ${ctx.from.first_name}</a>`,
+                  {parse_mode: "HTML", reply_markup: msgButtons});
+      
+                  }
+                  else {
+      
+                   await bot.api.sendMessage(id,          // отправка текста
+`Вложения выше</b>
+👤 ${ctx.from.first_name}</a>`,
+                  {parse_mode: "HTML", reply_markup: msgButtons});
+                 }
+      
+                } else {
+                 if (message.text !== undefined) {
+                  await bot.api.sendMessage(id,            // отправка текста
+`<code>${message.text}</code>
 👤 ${ctx.from.first_name}`,
-                  {parse_mode: "HTML"});
+                  {parse_mode: "HTML", reply_markup: msgButtons});              
+                  }
                 }
+                await ctx.react(config.successEmoji);                      // реакция              
+              }
              }
-            
+          
+
             catch (err) {
+              console.log(err);
               await bot.api.sendMessage(config.targetGroupId, `<b>Ошибка:</b> <code>Отвечайте на "новое сообщение" при ответе пользователю!</code>`, {parse_mode: "HTML"});}
 
         }

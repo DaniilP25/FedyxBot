@@ -26,6 +26,7 @@ const startMenu = new InlineKeyboard()
   .text("🤖 Мои боты", "mybots")
   .text("🆘 Поддержка", "support")
   .text("💸 Подписка", "sub")
+  .row()
   .text("➕ Новый бот", "newbot");
 
 // Потужий запуск бота
@@ -135,7 +136,7 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
       )
     );
     await ctx.reply("✅ Бот успешно создан!");
-    runBot(token);
+    validateToken(token);
   } catch (error) {
     console.error("Ошибка при добавлении в базу данных:", error);
     await ctx.reply("❌ Токен недействителен. Пожалуйста, введите корректный токен от @BotFather.");
