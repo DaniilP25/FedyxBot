@@ -37,10 +37,10 @@ const startMenu = new InlineKeyboard()
   for (let i = 0; i < tokens_row.length; i++) {
     try {
       token = tokens_row[i]['token'];
-      isValid = await validateToken(token);
+      isValid = await validateToken(token, 0);
       if (isValid) {
         runBot(token);      
-      }  
+      }
     }
     catch {}
   }
@@ -80,17 +80,48 @@ bot.command("start", async (ctx) => {
 
 // Callback кнопки
 bot.callbackQuery("mybots", async (ctx) => {
-  await ctx.reply(`Список ботов:\n...`);
+
+  const tokens_row = await db_query('SELECT token FROM apps WHERE authorID = $1;', [ctx.from.id]);
+  let token, isValid;
+  let bots = ''; //не пишите сюда плз (потом уберем)
+
+  let buttonRows = [];
+
+
+  for (let i = 0; i < tokens_row.length; i++) {
+    try {
+      token = tokens_row[i]['token'];
+      isValid = await validateToken(token, 0);
+      if (isValid) {
+        const botcheck = new Bot(token); // Замените на ваш токен
+        const botInfo = await botcheck.api.getMe();
+        bots += `\n<a href="https://t.me/${botInfo.username}">${botInfo.first_name}</a>`;
+        buttonRows.push([botInfo.first_name, i.toString()]);
+      }
+    }
+    catch {}
+  }
+
+  const botsMenu = InlineKeyboard.from(
+
+    buttonRows.map(row => 
+      row.map(([text, data]) => 
+        InlineKeyboard.text(text, data)
+      )
+    )
+  );
+
+  await ctx.reply(`🤖Список ботов:\n${bots}`, {parse_mode: "HTML", reply_markup: botsMenu});
 });
 
 bot.callbackQuery("support", async (ctx) => {
-  await ctx.reply(`Есть вопросы? Напиши нам в <a href="https://t.me/tgts_support">поддержку</a>.`, {
+  await ctx.reply(`Есть вопросы? Задай вопрос в <a href="https://t.me/tgts_support">поддержку🤘</a>.`, {
     parse_mode: "HTML",
   });
 });
 
 bot.callbackQuery("sub", async (ctx) => {
-  await ctx.reply("Плюсы подписки и все такое, потом нормально оформлю.");
+  await ctx.reply("Приобретая подписку 🤖МегаБот+ вы получаете:\n 1. Что-то,\n 2. Что-то,\n 3. Что-то"); //чет надо додумать, завтра поговорим
 });
 
 bot.callbackQuery("newbot", async (ctx) => {
@@ -100,7 +131,7 @@ bot.callbackQuery("newbot", async (ctx) => {
 // Разговор
 async function getToken(conversation: MyConversation, ctx: MyConversationContext) {
   await ctx.reply(
-    `Чтобы создать бота, вам нужно получить токен у <b>@BotFather</b>.\nОтправьте его в этот чат:`,
+    `Чтобы создать бота🤖, вам нужно получить токен у <b>@BotFather</b>.\nОтправьте его следующим сообщением в чат:`,
     { parse_mode: "HTML" }
   );
 
@@ -115,7 +146,7 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
 
   let isValid = false;
   try {
-    isValid = await validateToken(token);
+    isValid = await validateToken(token, 0);
   } catch (error) {
     console.error("Ошибка в validateToken:", error);
     await ctx.reply("❌ Произошла ошибка при проверке токена. Попробуйте снова.");
@@ -136,7 +167,8 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
       )
     );
     await ctx.reply("✅ Бот успешно создан!");
-    validateToken(token);
+    validateToken(token, 0);
+    runBot(token);
   } catch (error) {
     console.error("Ошибка при добавлении в базу данных:", error);
     await ctx.reply("❌ Токен недействителен. Пожалуйста, введите корректный токен от @BotFather.");
@@ -146,13 +178,19 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
 }
 
 // Функция для проверки токена
-async function validateToken(token: string): Promise<boolean> {
+async function validateToken(token: string, count: number): Promise<boolean> {
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-    const data = await res.json();
-    return data.ok === true;
+    if (count < 4) {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const data = await res.json();
+      return data.ok === true;  
+    }
+    else {
+      return false;
+    }
   } catch (err) {
     console.error("Ошибка в запросе к Telegram API:", err);
+    validateToken(token, count + 1);
     return false;
   }
 }
