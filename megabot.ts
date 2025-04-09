@@ -1,4 +1,4 @@
-import { Bot, session, Context, InlineKeyboard, SessionFlavor } from "grammy";
+import { Bot, session, Context, InlineKeyboard, SessionFlavor, CallbackQueryContext, CommandContext } from "grammy";
 import {
   conversations,
   createConversation,
@@ -7,7 +7,8 @@ import {
 } from "@grammyjs/conversations";
 import { Client, QueryResult, QueryResultRow } from "pg";
 import { db_query } from "./db";
-import { runBot } from "./bot";
+import { isPremium, runBot } from "./bot";
+import { Callback } from "mongodb";
 
 // Типизация
 interface SessionData {}
@@ -25,8 +26,8 @@ bot.use(createConversation(getToken));
 const startMenu = new InlineKeyboard()
   .text("🤖 Мои боты", "mybots")
   .text("🆘 Поддержка", "support")
-  .text("💸 Подписка", "sub")
   .row()
+  .text("💸 Подписка", "sub")
   .text("➕ Новый бот", "newbot");
 
 // Потужий запуск бота
@@ -39,22 +40,22 @@ const startMenu = new InlineKeyboard()
       token = tokens_row[i]['token'];
       isValid = await validateToken(token, 0);
       if (isValid) {
-        runBot(token);      
+        runBot(token);
       }
     }
+
     catch {}
   }
 })();
 
-// Обработка /start
-bot.command("start", async (ctx) => {
+async function start(ctx: CommandContext<MyContext>) {
   const db = {
     async checkUserExists(id: number): Promise<boolean> {
       const result: QueryResultRow = await db_query(
         `SELECT EXISTS(SELECT 1 FROM customers WHERE id = $1)`,
         [id]
       );
-      return true;
+      return result[0]["exists"];
     },
 
     async createUser(id: number): Promise<void> {
@@ -65,63 +66,125 @@ bot.command("start", async (ctx) => {
     },
   };
 
-  const userId = ctx.from?.id;
+  const userId = ctx!.from?.id;
   if (!userId) return;
 
   if (!(await db.checkUserExists(userId))) {
     await db.createUser(userId);
   }
+  try {
+    await ctx.editMessageText(
+      `<b>Главное меню</b>\n\n<i>Ваши предложки</i> - создание и управление предложками\n<i>Поддержка</i> - тех.поддержка бота, писать если бот выключился или есть проблемы с оплатой\n<i>Пожертвование</i> - денежное пожертвование команде бота, с вознаграждением в виде некоторых преимуществ в функционале бота`,
+      { reply_markup: startMenu, parse_mode: "HTML" }
+    );
+  }
+  catch {
+    await ctx.reply(
+      `<b>Главное меню</b>\n\n<i>Ваши предложки</i> - создание и управление предложками\n<i>Поддержка</i> - тех.поддержка бота, писать если бот выключился или есть проблемы с оплатой\n<i>Пожертвование</i> - денежное пожертвование команде бота, с вознаграждением в виде некоторых преимуществ в функционале бота`,
+      { reply_markup: startMenu, parse_mode: "HTML" }
+    );
+  }
+}
 
-  await ctx.reply(
-    `<b>Главное меню</b>\n\n<i>Ваши предложки</i> - создание и управление предложками\n<i>Поддержка</i> - тех.поддержка бота, писать если бот выключился или есть проблемы с оплатой\n<i>Пожертвование</i> - денежное пожертвование команде бота, с вознаграждением в виде некоторых преимуществ в функционале бота`,
-    { reply_markup: startMenu, parse_mode: "HTML" }
-  );
+// Обработка /start
+bot.command("start", async (ctx) => {
+  await start(ctx); 
 });
 
-// Callback кнопки
-bot.callbackQuery("mybots", async (ctx) => {
-
+async function mybots(ctx: CallbackQueryContext<MyContext>) {
   const tokens_row = await db_query('SELECT token FROM apps WHERE authorID = $1;', [ctx.from.id]);
   let token, isValid;
   let bots = ''; //не пишите сюда плз (потом уберем)
 
-  let buttonRows = [];
-
+  let botButtons = new InlineKeyboard();
 
   for (let i = 0; i < tokens_row.length; i++) {
     try {
       token = tokens_row[i]['token'];
       isValid = await validateToken(token, 0);
       if (isValid) {
-        const botcheck = new Bot(token); // Замените на ваш токен
-        const botInfo = await botcheck.api.getMe();
+        const botCheck = new Bot(token); // Замените на ваш токен
+        const botInfo = await botCheck.api.getMe();
         bots += `\n<a href="https://t.me/${botInfo.username}">${botInfo.first_name}</a>`;
-        buttonRows.push([botInfo.first_name, i.toString()]);
+        botButtons = botButtons.text(botInfo.first_name, `botButtons${token}`);
       }
     }
     catch {}
   }
+  botButtons.row();
+  botButtons.text("🔙 Назад", `back${0}`);
 
-  const botsMenu = InlineKeyboard.from(
+  await ctx.editMessageText(`🤖Список ботов:\n${bots}`, {parse_mode: "HTML", reply_markup: botButtons});
+}
 
-    buttonRows.map(row => 
-      row.map(([text, data]) => 
-        InlineKeyboard.text(text, data)
-      )
-    )
-  );
-
-  await ctx.reply(`🤖Список ботов:\n${bots}`, {parse_mode: "HTML", reply_markup: botsMenu});
+// Callback кнопки
+bot.callbackQuery("mybots", async (ctx) => {
+  await mybots(ctx);
 });
 
+bot.callbackQuery(/^botButtons(.+)/, async (ctx) => {
+  const buttonId = ctx.callbackQuery.data; // Получаем полный идентификатор
+  const token = buttonId.replace("botButtons", "");
+  let premium_row = await isPremium(ctx.from.id);  
+  // let date = new Date(premium_row[1] * 1000);
+  const botButton = new Bot(token);
+  const botInfo = await botButton.api.getMe();
+  let botButtons = new InlineKeyboard();
+  // botButtons = botButtons; //.text()
+  let weekLimitText; //, subText;
+
+  if (premium_row[0]) {
+    weekLimitText = `без ограничений`;
+    // subText = `Premium (до ${date})`;
+  }
+  else {
+    const weekLimit_row = await db_query('SELECT weekLimit FROM apps WHERE token = $1', [token]);
+    let weekLimit = weekLimit_row[0]['weeklimit'];
+    weekLimitText = `${weekLimit}/1000`;
+    // subText = "отсутствует";
+  }
+  
+  botButtons.text("🔙 Назад", `back${1}`);
+
+  const text = `Управление <a href="https://t.me/${botInfo.username}">${botInfo.first_name}</a>
+Лимит сообщений в неделю: ${weekLimitText}`;
+  await ctx.editMessageText(text, {parse_mode: "HTML", reply_markup: botButtons});
+}); // Подписка: ${subText}
+
+bot.callbackQuery(/^back(.+)/, async (ctx) => {
+  const callbackData = ctx.callbackQuery.data;
+  const currentPage = parseInt(callbackData.replace("back", ""), 10);
+  // Получаем текущую страницу из callback_data
+  
+  if (currentPage == 0) {
+    await ctx.editMessageText(`<b>Главное меню</b>\n\n<i>Ваши предложки</i> - создание и управление предложками\n<i>Поддержка</i> - тех.поддержка бота, писать если бот выключился или есть проблемы с оплатой\n<i>Пожертвование</i> - денежное пожертвование команде бота, с вознаграждением в виде некоторых преимуществ в функционале бота`,
+      {
+      parse_mode: "HTML",
+      reply_markup: startMenu
+    });
+  }
+  else if (currentPage == 1) {
+    await mybots(ctx);
+  }
+
+});
+
+// Пример генератора клавиатуры с пагинацией
+// function generateKeyboard(page: number): InlineKeyboard {
+//   if (page === 0) {
+//     return startMenu;    
+//   }
+//   else {
+//     return new InlineKeyboard();
+//   }
+// }
+
 bot.callbackQuery("support", async (ctx) => {
-  await ctx.reply(`Есть вопросы? Задай вопрос в <a href="https://t.me/tgts_support">поддержку🤘</a>.`, {
-    parse_mode: "HTML",
-  });
+  await ctx.reply(`По вопросам пишите в <a href="https://t.me/tgts_support">поддержку</a>`, {parse_mode: "HTML"});
 });
 
 bot.callbackQuery("sub", async (ctx) => {
-  await ctx.reply("Приобретая подписку 🤖МегаБот+ вы получаете:\n 1. Что-то,\n 2. Что-то,\n 3. Что-то"); //чет надо додумать, завтра поговорим
+  await ctx.reply("Приобретая подписку ввы получаете:\n 1. Что-то,\n 2. Что-то,\n 3. Что-то"); // из notes.md красиво переписать
 });
 
 bot.callbackQuery("newbot", async (ctx) => {
@@ -183,7 +246,7 @@ async function validateToken(token: string, count: number): Promise<boolean> {
     if (count < 4) {
       const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
       const data = await res.json();
-      return data.ok === true;  
+      return data.ok === true;
     }
     else {
       return false;

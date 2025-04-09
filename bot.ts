@@ -2,32 +2,49 @@ import { Bot, InlineKeyboard, InputMediaBuilder } from "grammy";
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
-
+import { db_query } from "./db";
 // ТУТ НУЖНО: ПЕРЕПИСАТЬ ДАННЫЕ ИЗ CONFIG.YAML В БД
+
+export async function isPremium(userId: number) {
+  let checkPremium = await db_query("SELECT EXTRACT(EPOCH FROM premium AT TIME ZONE 'UTC') AS unix_time FROM CUSTOMERS WHERE id = $1", [userId]);
+  let timestamp = checkPremium[0]["unix_time"];
+  let now = Date.now() / 1000;
+  return [timestamp > now, timestamp];
+}
 
 export async function runBot(token: string) {
   let timeout_users: number[] = [];
 
   const fileContents = fs.readFileSync('./config.yaml', 'utf8');
   const config = yaml.load(fileContents) as {[key: string]: any};
-  
+
   function sync_yaml(config: {[key: string]: any}) {
     const yamlString = yaml.dump(config);
     fs.writeFileSync('config.yaml', yamlString);
   }
-  
+
   function removeTimeout(id: number): void {
     delete timeout_users[timeout_users.indexOf(id)];
   }
-  
+
   const msgButtons = new InlineKeyboard()                    // кнопки бан разбан удалить
     .text("⛔", "ban")
     .text("✅", "unban")
     .text("🗑️", "delete");
 
   const bot = new Bot(token);
-  bot.command("start", async (ctx) => {                      // /start
-    await ctx.reply(config.helloMessage);
+  const ad = "\nСоздано с помощью @megadefpansanbot."
+
+  bot.command("start", async (ctx) => {
+    let id_query = await db_query("SELECT authorID FROM APPS WHERE token = $1", [token]);
+    let helloMessage = await db_query("SELECT helloMessage FROM APPS WHERE token = $1", [token]);
+    let msg = helloMessage[0]["hellomessage"];
+
+    if (msg === '') { msg = config.helloMessage }
+    else { msg = helloMessage[0]["hellomessage"] }
+
+    if (await isPremium(id_query[0]["authorid"])) { ctx.reply(msg) }
+    else { ctx.reply(msg+ad) }
 });
 
 bot.on('message', async (ctx) => {

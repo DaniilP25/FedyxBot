@@ -5,7 +5,7 @@ export async function db_query<T extends QueryResultRow = any>(
   values?: any[]
 ): Promise<T[]> {
   let client: Client | null = null;
-  
+
   try {
     client = new Client({
       user: 'postgres',
