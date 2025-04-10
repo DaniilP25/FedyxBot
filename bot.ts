@@ -69,13 +69,13 @@ export async function runBot(token: string) {
     delete timeout_users[timeout_users.indexOf(id)];
   }
 
-  const msgButtons = new InlineKeyboard()                    // кнопки бан разбан удалить
+  const msgButtons = new InlineKeyboard()
     .text("⛔", "ban")
     .text("✅", "unban")
     .text("🗑️", "delete");
 
   const bot = new Bot(token);
-  const ad = "\nСоздано с помощью @megadefpansanbot."
+  const ad = "\nСоздано с помощью @proposiobot."
 
   bot.command("start", async (ctx) => {
     let helloMessage = await db_query("SELECT helloMessage FROM APPS WHERE token = $1", [token]);
@@ -142,135 +142,141 @@ bot.on('message', async (ctx) => {
   }    
 
     if (chatType === 'private') {                                        // поведение бота в лс, перенаправление текста и фото в группу, проверка на бан        
-        if (config.banList.includes(ctx.from.id)) { // проверка на бан
-          await ctx.reply(config.bannedMessage);
+      const authorID = await db_query('SELECT authorid FROM APPS WHERE token = $1', [token]);
+      if (ctx.from.id === authorID[0]['authorid']) {
+        await ctx.reply(`Вы - владелец этого бота. Сюда будут приходить сообщения (или же в группу, если вы настроили эту функцию)
+Если вы хотите настроить бота, то сделать это можно в @proposiobot.`);
+      }
+
+      if (config.banList.includes(ctx.from.id)) { // проверка на бан
+        await ctx.reply(config.bannedMessage);
+        return;
+      }
+
+      if (timeout_users.includes(ctx.from.id)) { // проверка на обоюнду
+        await ctx.reply(config.timeoutMessage);
+        return;
+      }
+
+      const lim = await updateLimit(token);
+      if (lim[0] === false) {
+          await ctx.reply(`${config.weekLimitMessage} (${lim[1]})`);
           return;
         }
 
-        if (timeout_users.includes(ctx.from.id)) { // проверка на обоюнду
-          await ctx.reply(config.timeoutMessage);
-          return;
+      if (media.length > 0) {
+
+        try {
+          await ctx.api.sendMediaGroup(config.targetGroupId, media); // отправка вложений
+        }
+        catch {
+          await ctx.api.sendMessage(config.targetGroupId, "У бота нет права отправлять вложения")
         }
 
-        const lim = await updateLimit(token);
-        if (lim[0] === false) {
-            await ctx.reply(`${config.weekLimitMessage} (${lim[1]})`);
-            return;
-          }
+        if (message.caption) {
 
-        if (media.length > 0) {
-
-          try {
-            await ctx.api.sendMediaGroup(config.targetGroupId, media); // отправка вложений
-          }
-          catch {
-            await ctx.api.sendMessage(config.targetGroupId, "У бота нет права отправлять вложения")
-          }
-
-          if (message.caption) {
-
-            await bot.api.sendMessage(config.targetGroupId,          // отправка текста
+          await bot.api.sendMessage(config.targetGroupId,          // отправка текста
 `<b>Новое сообщение:</b> <code>${message.caption}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
-            {parse_mode: "HTML", reply_markup: msgButtons});
+          {parse_mode: "HTML", reply_markup: msgButtons});
 
-          }
-          else {
+        }
+        else {
 
-            await bot.api.sendMessage(config.targetGroupId,          // отправка текста
+          await bot.api.sendMessage(config.targetGroupId,          // отправка текста
 `<b>Новое сообщение! Вложения выше</b>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
-            {parse_mode: "HTML", reply_markup: msgButtons});
-          }
+          {parse_mode: "HTML", reply_markup: msgButtons});
+        }
 
-        } else {
-          if (message.text !== undefined) {
-            await bot.api.sendMessage(config.targetGroupId,            // отправка текста
+      } else {
+        if (message.text !== undefined) {
+          await bot.api.sendMessage(config.targetGroupId,            // отправка текста
 `<b>Новое сообщение:</b> <code>${message.text}</code>
 👤 <a href="tg://user?id=${ctx.from.id}">${ctx.from.first_name}</a>
 <tg-spoiler>${ctx.from.id}</tg-spoiler>`,
-                        {parse_mode: "HTML", reply_markup: msgButtons});              
-          }
-
+                      {parse_mode: "HTML", reply_markup: msgButtons});              
         }
 
-        timeout_users.push(ctx.from.id);
-        setInterval(() => removeTimeout(ctx.from.id), 10000);
-        await ctx.react(config.successEmoji);                        // реакция
+      }
+
+      timeout_users.push(ctx.from.id);
+      setInterval(() => removeTimeout(ctx.from.id), 10000);
+      await ctx.react(config.successEmoji);                        // реакция
 
   } else if (chatType === 'group' || chatType === 'supergroup') {    // отправка сообщений от группы в личку, выход из лишних групп
 
-        if (ctx.chat.id == config.targetGroupId) {
-           try {
-              if (ctx.msg.reply_to_message == undefined) {
-                return;
-              }
+    if (ctx.chat.id == config.targetGroupId) {
+        try {
+          if (ctx.msg.reply_to_message == undefined) {
+            return;
+          }
 
-              timeout_users.push(ctx.from.id);
-              setInterval(() => removeTimeout(ctx.from.id), 10000);
-              
-              if (ctx.msg.reply_to_message!.from!.id == bot.botInfo.id) {
-                const lim = await updateLimit(token);
-                if (lim[0] === false) {
-                  await ctx.reply(`${config.weekLimitMessage} (${lim[1]})`);
-                  return;  
-                }
-
-                const id = ctx.msg.reply_to_message!.text!.split("\n").slice(-1)[0];
-                const message = ctx.message; // проверено
-                if (media.length > 0) {
-
-                  await ctx.api.sendMediaGroup(id, media); // отправка вложений
-
-
-                  if (message.caption) {
-
-                    await bot.api.sendMessage(id,          // отправка текста
-`<code>${message.caption}</code>
-👤 ${ctx.from.first_name}</a>`,
-                  {parse_mode: "HTML"});
-
-                  }
-                  else {
-
-                   await bot.api.sendMessage(id,          // отправка текста
-`Вложения выше</b>
-👤 ${ctx.from.first_name}</a>`,
-                  {parse_mode: "HTML"});
-                 }
-
-                } else {
-                 if (message.text !== undefined) {
-                  await bot.api.sendMessage(id,            // отправка текста
-`<code>${message.text}</code>
-👤 ${ctx.from.first_name}`,
-                  {parse_mode: "HTML"});
-                  }
-                }
-                await ctx.react(config.successEmoji);                      // реакция
-              }
-             }
-
-
-            catch (err) {
-              console.log(err);
-              await bot.api.sendMessage(config.targetGroupId, `<b>Ошибка:</b> <code>Отвечайте на "новое сообщение" при ответе пользователю!</code>`, {parse_mode: "HTML"});}
-
-        }
-
-        else {
-
-            try {
-                await ctx.api.leaveChat(ctx.chat.id);
-                console.log(`Бот вышел из группы ${ctx.chat.id}`);
+          timeout_users.push(ctx.from.id);
+          setInterval(() => removeTimeout(ctx.from.id), 10000);
+          
+          if (ctx.msg.reply_to_message!.from!.id == bot.botInfo.id) {
+            const lim = await updateLimit(token);
+            if (lim[0] === false) {
+              await ctx.reply(`${config.weekLimitMessage} (${lim[1]})`);
+              return;  
             }
 
-            catch (error) {console.error(`Ошибка при выходе из группы ${ctx.chat.id}:`, error);}
+            const id = ctx.msg.reply_to_message!.text!.split("\n").slice(-1)[0];
+            const message = ctx.message; // проверено
+            if (media.length > 0) {
 
+              await ctx.api.sendMediaGroup(id, media); // отправка вложений
+
+
+              if (message.caption) {
+
+                await bot.api.sendMessage(id,          // отправка текста
+`<code>${message.caption}</code>
+👤 ${ctx.from.first_name}</a>`,
+              {parse_mode: "HTML"});
+
+              }
+              else {
+
+                await bot.api.sendMessage(id,          // отправка текста
+`Вложения выше</b>
+👤 ${ctx.from.first_name}</a>`,
+              {parse_mode: "HTML"});
+              }
+
+            } else {
+              if (message.text !== undefined) {
+              await bot.api.sendMessage(id,            // отправка текста
+`<code>${message.text}</code>
+👤 ${ctx.from.first_name}`,
+              {parse_mode: "HTML"});
+              }
+            }
+            await ctx.react(config.successEmoji);                      // реакция
+          }
+          }
+
+
+        catch (err) {
+          console.log(err);
+          await bot.api.sendMessage(config.targetGroupId, `<b>Ошибка:</b> <code>Отвечайте на "новое сообщение" при ответе пользователю!</code>`, {parse_mode: "HTML"});}
+
+    }
+
+    else {
+
+        try {
+            await ctx.api.leaveChat(ctx.chat.id);
+            console.log(`Бот вышел из группы ${ctx.chat.id}`);
         }
-      }
+
+        catch (error) {console.error(`Ошибка при выходе из группы ${ctx.chat.id}:`, error);}
+
+    }
+  }
 });
 
 bot.callbackQuery("ban", async (ctx) => {

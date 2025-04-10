@@ -5,10 +5,11 @@ import {
   type Conversation,
   type ConversationFlavor,
 } from "@grammyjs/conversations";
-import { Client, QueryResult, QueryResultRow } from "pg";
+import { QueryResultRow } from "pg";
 import { db_query } from "./db";
+import * as fs from 'fs';
+import * as yaml from 'js-yaml';
 import { formatUnixTime, isPremium, runBot } from "./bot";
-import { Callback } from "mongodb";
 
 // Типизация
 interface SessionData {}
@@ -16,7 +17,15 @@ type MyContext = Context & ConversationFlavor<Context> & SessionFlavor<SessionDa
 type MyConversationContext = Context;
 type MyConversation = Conversation<MyContext, MyConversationContext>;
 
-const bot = new Bot<MyContext>("7719267045:AAE6qwgfcbpkVNmVnd1JB_zSrevff-V-s_0");
+const fileContents = fs.readFileSync('./config.yaml', 'utf8');
+const config = yaml.load(fileContents) as {[key: string]: any};
+
+function sync_yaml(config: {[key: string]: any}) {
+  const yamlString = yaml.dump(config);
+  fs.writeFileSync('config.yaml', yamlString);
+}
+
+const bot = new Bot<MyContext>(config.proposioToken);
 
 // Middleware
 bot.use(conversations());
@@ -191,7 +200,7 @@ bot.callbackQuery(/^back(.+)/, async (ctx) => {
 // }
 
 bot.callbackQuery("support", async (ctx) => {
-  await ctx.reply(`По вопросам пишите в <a href="https://t.me/tgts_support">поддержку</a>`, {parse_mode: "HTML"});
+  await ctx.reply(`По вопросам пишите в <a href="https://t.me/proposio_support">поддержку</a>`, {parse_mode: "HTML"});
 });
 
 bot.callbackQuery("sub", async (ctx) => {
