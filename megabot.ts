@@ -7,7 +7,7 @@ import {
 } from "@grammyjs/conversations";
 import { Client, QueryResult, QueryResultRow } from "pg";
 import { db_query } from "./db";
-import { isPremium, runBot } from "./bot";
+import { formatUnixTime, isPremium, runBot } from "./bot";
 import { Callback } from "mongodb";
 
 // Типизация
@@ -48,7 +48,7 @@ const startMenu = new InlineKeyboard()
   }
 })();
 
-async function start(ctx: CommandContext<MyContext>) {
+async function register(ctx: CommandContext<MyContext>) {
   const db = {
     async checkUserExists(id: number): Promise<boolean> {
       const result: QueryResultRow = await db_query(
@@ -60,7 +60,7 @@ async function start(ctx: CommandContext<MyContext>) {
 
     async createUser(id: number): Promise<void> {
       await db_query(
-        `INSERT INTO customers(id, premium, tokens) VALUES($1, TO_TIMESTAMP(0) AT TIME ZONE 'UTC', $2)`,
+        `INSERT INTO customers(id, premium, tokens) VALUES($1, (NOW() + INTERVAL '7 days') AT TIME ZONE 'UTC', $2)`,
         [id, []]
       );
     },
@@ -72,6 +72,10 @@ async function start(ctx: CommandContext<MyContext>) {
   if (!(await db.checkUserExists(userId))) {
     await db.createUser(userId);
   }
+}
+
+async function start(ctx: CommandContext<MyContext>) {
+  await register(ctx);
   try {
     await ctx.editMessageText(
       `<b>Главное меню</b>\n\n<i>Ваши предложки</i> - создание и управление предложками\n<i>Поддержка</i> - тех.поддержка бота, писать если бот выключился или есть проблемы с оплатой\n<i>Пожертвование</i> - денежное пожертвование команде бота, с вознаграждением в виде некоторых преимуществ в функционале бота`,
@@ -127,29 +131,36 @@ bot.callbackQuery(/^botButtons(.+)/, async (ctx) => {
   const token = buttonId.replace("botButtons", "");
   let premium_row = await isPremium(ctx.from.id);  
   // let date = new Date(premium_row[1] * 1000);
+  // const time = premium_row[1];
+  const time_row = await db_query("SELECT EXTRACT(EPOCH FROM weektimestamp AT TIME ZONE 'UTC') AS unix_timestamp FROM APPS WHERE token = $1", [token]);
+  const time = parseInt(time_row[0]['unix_timestamp']);
+  const updLimitDate = await formatUnixTime(time);
   const botButton = new Bot(token);
   const botInfo = await botButton.api.getMe();
   let botButtons = new InlineKeyboard();
   // botButtons = botButtons; //.text()
   let weekLimitText; //, subText;
+  // const balance_row = db_query('SELECT balance FROM CUSTOMERS WHERE id = $1', [ctx.from.id]);
 
   if (premium_row[0]) {
-    weekLimitText = `без ограничений`;
+    weekLimitText = "Лимит сообщений в неделю: без ограничений";
+
     // subText = `Premium (до ${date})`;
   }
   else {
     const weekLimit_row = await db_query('SELECT weekLimit FROM apps WHERE token = $1', [token]);
     let weekLimit = weekLimit_row[0]['weeklimit'];
-    weekLimitText = `${weekLimit}/1000`;
+    weekLimitText = `Лимит сообщений в неделю: ${weekLimit}/1000 (обновится ${updLimitDate})`;
     // subText = "отсутствует";
   }
   
   botButtons.text("🔙 Назад", `back${1}`);
 
+
   const text = `Управление <a href="https://t.me/${botInfo.username}">${botInfo.first_name}</a>
-Лимит сообщений в неделю: ${weekLimitText}`;
+${weekLimitText}`;
   await ctx.editMessageText(text, {parse_mode: "HTML", reply_markup: botButtons});
-}); // Подписка: ${subText}
+}); // Подписка: ${subText} // Баланс: ${balance_row[0]['balance']}₽
 
 bot.callbackQuery(/^back(.+)/, async (ctx) => {
   const callbackData = ctx.callbackQuery.data;

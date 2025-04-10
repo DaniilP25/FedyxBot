@@ -1,15 +1,57 @@
-import { Bot, InlineKeyboard, InputMediaBuilder } from "grammy";
+import { Bot, InlineKeyboard, InputMediaBuilder, CommandContext } from "grammy";
 
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import { db_query } from "./db";
 // ТУТ НУЖНО: ПЕРЕПИСАТЬ ДАННЫЕ ИЗ CONFIG.YAML В БД
 
-export async function isPremium(userId: number) {
+export async function formatUnixTime(unixTime: number): Promise<string> {
+  const date = new Date(unixTime * 1000);
+
+  const day = date.getUTCDate().toString().padStart(2, '0');
+  const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+  const year = date.getUTCFullYear();
+  const hours = date.getUTCHours().toString().padStart(2, '0');
+  const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+
+  return `${day}.${month}.${year} ${hours+3}:${minutes} МСК`;
+}
+
+export async function isPremium(userId: number): Promise<[boolean, number]> {
   let checkPremium = await db_query("SELECT EXTRACT(EPOCH FROM premium AT TIME ZONE 'UTC') AS unix_time FROM CUSTOMERS WHERE id = $1", [userId]);
-  let timestamp = checkPremium[0]["unix_time"];
+  let timestamp = Number(checkPremium[0]["unix_time"]);
   let now = Date.now() / 1000;
   return [timestamp > now, timestamp];
+}
+
+async function updateLimit(botToken: string): Promise<[boolean, string]> {
+  const author_row = await db_query('SELECT authorid FROM APPS WHERE token = $1', [botToken]);
+  const premium = await isPremium(author_row[0]['authorid']);
+  
+  if (premium[0] === true) {
+    return [true, ''];
+  } else {
+    const limit_row = await db_query('SELECT weeklimit FROM APPS WHERE token = $1', [botToken]);
+    const limit = limit_row[0]['weeklimit'];
+
+    if (limit > 0) {
+      await db_query('UPDATE APPS SET weeklimit = weeklimit - 1 WHERE token = $1', [botToken]);
+      return [true, ''];
+    } else {
+      let time_row = await db_query("SELECT EXTRACT(EPOCH FROM weektimestamp AT TIME ZONE 'UTC') AS unix_timestamp FROM APPS WHERE token = $1", [botToken]);
+      let time = parseInt(time_row[0]['unix_timestamp']);
+
+      if (Date.now() / 1000 > time) {
+        await db_query("UPDATE APPS SET weeklimit = 1000, weektimestamp = (NOW() + INTERVAL '7 days') AT TIME ZONE 'UTC' WHERE token = $1", [botToken]);
+        time_row = await db_query("SELECT EXTRACT(EPOCH FROM weektimestamp AT TIME ZONE 'UTC') AS unix_timestamp FROM APPS WHERE token = $1", [botToken]);
+        time = parseInt(time_row[0]['unix_timestamp']);
+      }
+
+      const date = await formatUnixTime(time);
+      
+      return [false, date];
+    }
+  }
 }
 
 export async function runBot(token: string) {
@@ -36,14 +78,13 @@ export async function runBot(token: string) {
   const ad = "\nСоздано с помощью @megadefpansanbot."
 
   bot.command("start", async (ctx) => {
-    let id_query = await db_query("SELECT authorID FROM APPS WHERE token = $1", [token]);
     let helloMessage = await db_query("SELECT helloMessage FROM APPS WHERE token = $1", [token]);
     let msg = helloMessage[0]["hellomessage"];
+    const premium = await isPremium(ctx.from!.id);
 
     if (msg === '') { msg = config.helloMessage }
     else { msg = helloMessage[0]["hellomessage"] }
-
-    if (await isPremium(id_query[0]["authorid"])) { ctx.reply(msg) }
+    if (premium[0] === true) { ctx.reply(msg) }
     else { ctx.reply(msg+ad) }
 });
 
@@ -100,17 +141,22 @@ bot.on('message', async (ctx) => {
     // media.push(InputMediaBuilder.sticker(message.sticker.file_id));
   }    
 
-    if (chatType === 'private') {                                        // поведение бота в лс, перенаправление текста и фото в группу, проверка на бан
-
+    if (chatType === 'private') {                                        // поведение бота в лс, перенаправление текста и фото в группу, проверка на бан        
         if (config.banList.includes(ctx.from.id)) { // проверка на бан
-          ctx.reply(config.bannedMessage);
+          await ctx.reply(config.bannedMessage);
           return;
         }
 
         if (timeout_users.includes(ctx.from.id)) { // проверка на обоюнду
-          ctx.reply(config.timeoutMessage);
+          await ctx.reply(config.timeoutMessage);
           return;
         }
+
+        const lim = await updateLimit(token);
+        if (lim[0] === false) {
+            await ctx.reply(`${config.weekLimitMessage} (${lim[1]})`);
+            return;
+          }
 
         if (media.length > 0) {
 
@@ -164,8 +210,14 @@ bot.on('message', async (ctx) => {
 
               timeout_users.push(ctx.from.id);
               setInterval(() => removeTimeout(ctx.from.id), 10000);
-
+              
               if (ctx.msg.reply_to_message!.from!.id == bot.botInfo.id) {
+                const lim = await updateLimit(token);
+                if (lim[0] === false) {
+                  await ctx.reply(`${config.weekLimitMessage} (${lim[1]})`);
+                  return;  
+                }
+
                 const id = ctx.msg.reply_to_message!.text!.split("\n").slice(-1)[0];
                 const message = ctx.message; // проверено
                 if (media.length > 0) {
