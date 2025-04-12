@@ -25,7 +25,7 @@ function sync_yaml(config: {[key: string]: any}) {
   fs.writeFileSync('config.yaml', yamlString);
 }
 
-const bot = new Bot<MyContext>(config.proposioToken);
+const bot = new Bot<MyContext>(config.fedyxToken);
 
 // Middleware
 bot.use(conversations());
@@ -38,6 +38,9 @@ const startMenu = new InlineKeyboard()
   .row()
   .text("💸 Подписка", "sub")
   .text("➕ Новый бот", "newbot");
+
+const buyPremiumPls = new InlineKeyboard()
+  .text("💸 Купить подписку", "sub");
 
 // Потужий запуск бота
 (async () => {
@@ -57,7 +60,7 @@ const startMenu = new InlineKeyboard()
   }
 })();
 
-async function register(ctx: CommandContext<MyContext>) {
+export async function register(id: number) {
   const db = {
     async checkUserExists(id: number): Promise<boolean> {
       const result: QueryResultRow = await db_query(
@@ -69,22 +72,19 @@ async function register(ctx: CommandContext<MyContext>) {
 
     async createUser(id: number): Promise<void> {
       await db_query(
-        `INSERT INTO customers(id, premium, tokens) VALUES($1, (NOW() + INTERVAL '7 days') AT TIME ZONE 'UTC', $2)`,
+        `INSERT INTO customers(id, premium, tokens) VALUES($1, TO_TIMESTAMP(0), $2)`,
         [id, []]
       );
     },
   };
 
-  const userId = ctx!.from?.id;
-  if (!userId) return;
-
-  if (!(await db.checkUserExists(userId))) {
-    await db.createUser(userId);
+  if (!(await db.checkUserExists(id))) {
+    await db.createUser(id);
   }
 }
 
 async function start(ctx: CommandContext<MyContext>) {
-  await register(ctx);
+  await register(ctx.from!.id);
   try {
     await ctx.editMessageText(
       `<b>Главное меню</b>\n\n<i>Ваши предложки</i> - создание и управление предложками\n<i>Поддержка</i> - тех.поддержка бота, писать если бот выключился или есть проблемы с оплатой\n<i>Пожертвование</i> - денежное пожертвование команде бота, с вознаграждением в виде некоторых преимуществ в функционале бота`,
@@ -200,7 +200,7 @@ bot.callbackQuery(/^back(.+)/, async (ctx) => {
 // }
 
 bot.callbackQuery("support", async (ctx) => {
-  await ctx.reply(`По вопросам пишите в <a href="https://t.me/proposio_support">поддержку</a>`, {parse_mode: "HTML"});
+  await ctx.reply(`По вопросам пишите в <a href="https://t.me/fedyx_support">поддержку</a>`, {parse_mode: "HTML"});
 });
 
 bot.callbackQuery("sub", async (ctx) => {
@@ -208,10 +208,31 @@ bot.callbackQuery("sub", async (ctx) => {
 });
 
 bot.callbackQuery("newbot", async (ctx) => {
-  await ctx.conversation.enter("getToken");
+  const rawBotCount = await db_query('SELECT COUNT(token) AS count FROM APPS WHERE authorid = $1', [ctx.from.id]);
+  const botCount = parseInt(rawBotCount[0]["count"]);
+  const premium = await isPremium(ctx.from.id);
+
+  if (premium[0] === true) {
+    if (botCount >= 3) {
+      await ctx.reply("Достигнут лимит ботов.");
+    }
+    else {
+      await ctx.conversation.enter("getToken");
+    }
+  }
+  else {
+    if (botCount >= 1) {
+      await ctx.reply("Достигнут лимит ботов! Приобретите подписку, чтобы увеличить лимит.",
+        {reply_markup: buyPremiumPls}
+      );
+    }
+    else {
+      await ctx.conversation.enter("getToken");
+    }
+  }
 });
 
-// Разговор
+// bot noviy
 async function getToken(conversation: MyConversation, ctx: MyConversationContext) {
   await ctx.reply(
     `Чтобы создать бота🤖, вам нужно получить токен у <b>@BotFather</b>.\nОтправьте его следующим сообщением в чат:`,
@@ -244,8 +265,8 @@ async function getToken(conversation: MyConversation, ctx: MyConversationContext
   try {
     await conversation.external(() =>
       db_query(
-        `INSERT INTO apps(token, authorID, helloMessage, timeoutMessage, banMessage, unbanMessage, sendMessage, targetGroupID)
-         VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO apps(token, authorID, weekTimestamp, helloMessage, timeoutMessage, banMessage, unbanMessage, sendMessage, targetGroupID)
+         VALUES($1, $2, (NOW() + INTERVAL '7 days') AT TIME ZONE 'UTC', $3, $4, $5, $6, $7, $8)`,
         [token, authorID, '', '', '', '', '', 0]
       )
     );
